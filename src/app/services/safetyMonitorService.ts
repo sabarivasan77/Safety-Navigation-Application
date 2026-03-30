@@ -1,16 +1,26 @@
+import { sosService } from "./sosService";
+
 // Safety Monitor Service - Continuous monitoring with escalation
-export type SafetyStatus = 'safe' | 'checking' | 'warning' | 'critical' | 'emergency';
+export type SafetyStatus =
+  | "safe"
+  | "checking"
+  | "warning"
+  | "critical"
+  | "emergency";
 export type EscalationLevel = 0 | 1 | 2 | 3 | 4;
 
 export interface SafetyMonitorState {
   status: SafetyStatus;
   isActive: boolean;
+  isPaused: boolean;
   lastCheck: number;
   lastResponse: number;
   escalationLevel: EscalationLevel;
   responded: boolean;
   journeyStartTime: number | null;
   checkCount: number;
+  demoMode: boolean;
+  nextCheckAt: number | null;
 }
 
 export interface SafetyMonitorCallbacks {
@@ -20,29 +30,36 @@ export interface SafetyMonitorCallbacks {
   onReset: () => void;
 }
 
+interface StartMonitoringOptions {
+  immediateCheck?: boolean;
+}
+
 class SafetyMonitorService {
   private state: SafetyMonitorState = {
-    status: 'safe',
+    status: "safe",
     isActive: false,
+    isPaused: false,
     lastCheck: Date.now(),
     lastResponse: Date.now(),
     escalationLevel: 0,
     responded: true,
     journeyStartTime: null,
     checkCount: 0,
+    demoMode: false,
+    nextCheckAt: null,
   };
 
-  private checkInterval: number | null = null;
+  private nextCheckTimeout: number | null = null;
   private escalationTimeout: number | null = null;
   private callbacks: SafetyMonitorCallbacks | null = null;
   private audioContext: AudioContext | null = null;
   private alarmSound: OscillatorNode | null = null;
 
   // Timing configuration (in milliseconds)
-  private readonly CHECK_INTERVAL = 5 * 60 * 1000; // 5 minutes
-  private readonly ESCALATION_STEP_1 = 1 * 60 * 1000; // 1 minute after first check
-  private readonly ESCALATION_STEP_2 = 2 * 60 * 1000; // 2 minutes after step 1
-  private readonly ESCALATION_STEP_3 = 1 * 60 * 1000; // 1 minute after step 2
+  private readonly CHECK_INTERVAL = 5 * 60 * 1000;
+  private readonly ESCALATION_STEP_1 = 1 * 60 * 1000;
+  private readonly ESCALATION_STEP_2 = 2 * 60 * 1000;
+  private readonly ESCALATION_STEP_3 = 1 * 60 * 1000;
 
   constructor() {
     this.initAudioContext();
@@ -50,186 +67,326 @@ class SafetyMonitorService {
 
   private initAudioContext() {
     try {
-      this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-    } catch (e) {
-      console.warn('AudioContext not supported:', e);
+      this.audioContext = new (
+        window.AudioContext ||
+        (window as Window & { webkitAudioContext?: typeof AudioContext })
+          .webkitAudioContext
+      )();
+    } catch (error) {
+      console.warn("AudioContext not supported:", error);
     }
   }
 
-  // Start monitoring journey
-  startMonitoring(callbacks: SafetyMonitorCallbacks) {
-    if (this.state.isActive) {
-      console.log('Monitoring already active');
+  startMonitoring(
+    callbacks: SafetyMonitorCallbacks,
+    options: StartMonitoringOptions = {},
+  ) {
+    this.callbacks = callbacks;
+
+    if (this.state.isActive && !this.state.isPaused) {
       return;
     }
 
-    this.callbacks = callbacks;
+    const now = Date.now();
+
+    this.clearTimers();
+    this.stopAlarm();
+
     this.state = {
       ...this.state,
       isActive: true,
-      status: 'safe',
-      journeyStartTime: Date.now(),
-      lastCheck: Date.now(),
-      lastResponse: Date.now(),
-      checkCount: 0,
+      isPaused: false,
+      status: "safe",
+      escalationLevel: 0,
+      responded: true,
+      journeyStartTime: this.state.journeyStartTime ?? now,
+      lastCheck: now,
+      lastResponse: now,
+      nextCheckAt: null,
     };
 
-    // Start periodic checks
-    this.checkInterval = window.setInterval(() => {
+    if (options.immediateCheck) {
       this.triggerSafetyCheck();
-    }, this.CHECK_INTERVAL);
-
-    console.log('✅ Safety monitoring started');
+    } else {
+      this.scheduleNextCheck(this.CHECK_INTERVAL);
+      this.callbacks?.onReset();
+    }
   }
 
-  // Stop monitoring
   stopMonitoring() {
-    if (this.checkInterval) {
-      clearInterval(this.checkInterval);
-      this.checkInterval = null;
-    }
-    if (this.escalationTimeout) {
-      clearTimeout(this.escalationTimeout);
-      this.escalationTimeout = null;
-    }
+    this.clearTimers();
     this.stopAlarm();
-    
+
     this.state = {
       ...this.state,
       isActive: false,
-      status: 'safe',
+      isPaused: false,
+      status: "safe",
+      escalationLevel: 0,
+      responded: true,
+      nextCheckAt: null,
+    };
+
+    this.callbacks?.onReset();
+  }
+
+  pauseMonitoring() {
+    if (!this.state.isActive || this.state.isPaused) {
+      return;
+    }
+
+    this.clearTimers();
+    this.stopAlarm();
+
+    this.state = {
+      ...this.state,
+      isPaused: true,
+      status: "safe",
+      escalationLevel: 0,
+      responded: true,
+      nextCheckAt: null,
+    };
+
+    this.callbacks?.onReset();
+  }
+
+  resumeMonitoring() {
+    if (!this.state.isActive || !this.state.isPaused) {
+      return;
+    }
+
+    this.state = {
+      ...this.state,
+      isPaused: false,
+      status: "safe",
       escalationLevel: 0,
       responded: true,
     };
 
-    console.log('🛑 Safety monitoring stopped');
+    this.scheduleNextCheck(this.CHECK_INTERVAL);
+    this.callbacks?.onReset();
   }
 
-  // Trigger initial safety check
-  private triggerSafetyCheck() {
-    this.state.checkCount++;
-    this.state.lastCheck = Date.now();
-    this.state.responded = false;
-    this.state.escalationLevel = 1;
-    this.state.status = 'checking';
-
-    console.log(`🔔 Safety check #${this.state.checkCount} - Level 1`);
-
-    if (this.callbacks?.onCheck) {
-      this.callbacks.onCheck(1);
+  resetMonitoring() {
+    if (!this.state.isActive) {
+      return;
     }
 
-    // Schedule escalation if no response
+    this.clearTimers();
+    this.stopAlarm();
+
+    const now = Date.now();
+
+    this.state = {
+      ...this.state,
+      isPaused: false,
+      status: "safe",
+      escalationLevel: 0,
+      responded: true,
+      lastResponse: now,
+      nextCheckAt: null,
+    };
+
+    this.scheduleNextCheck(this.CHECK_INTERVAL);
+    this.callbacks?.onReset();
+  }
+
+  setDemoMode(enabled: boolean) {
+    this.state = {
+      ...this.state,
+      demoMode: enabled,
+    };
+  }
+
+  skipToNextLevel() {
+    if (!this.state.demoMode || !this.state.isActive || this.state.isPaused) {
+      return;
+    }
+
+    if (this.state.escalationLevel === 0) {
+      this.triggerSafetyCheck();
+      return;
+    }
+
+    if (this.state.escalationLevel < 4) {
+      this.clearEscalationTimer();
+      this.escalate((this.state.escalationLevel + 1) as EscalationLevel);
+    }
+  }
+
+  userResponded(response: "ok" | "help" | "sos") {
+    this.state = {
+      ...this.state,
+      responded: true,
+      lastResponse: Date.now(),
+    };
+
+    this.clearEscalationTimer();
+    this.stopAlarm();
+
+    switch (response) {
+      case "ok":
+        this.resetMonitoring();
+        break;
+      case "help":
+        this.state = {
+          ...this.state,
+          status: "warning",
+        };
+        this.scheduleNextCheck(this.CHECK_INTERVAL);
+        break;
+      case "sos":
+        this.activateAutoSOS();
+        break;
+    }
+  }
+
+  getState(): SafetyMonitorState {
+    return { ...this.state };
+  }
+
+  isMonitoring(): boolean {
+    return this.state.isActive && !this.state.isPaused;
+  }
+
+  getTimeUntilNextCheck(): number {
+    if (
+      !this.state.isActive ||
+      this.state.isPaused ||
+      !this.state.nextCheckAt
+    ) {
+      return 0;
+    }
+
+    const remaining = Math.max(0, this.state.nextCheckAt - Date.now());
+    return Math.floor(remaining / 1000);
+  }
+
+  getJourneyDuration(): number {
+    if (!this.state.journeyStartTime) {
+      return 0;
+    }
+
+    return Math.floor((Date.now() - this.state.journeyStartTime) / 1000);
+  }
+
+  private triggerSafetyCheck() {
+    if (!this.state.isActive || this.state.isPaused) {
+      return;
+    }
+
+    this.clearTimers();
+
+    const now = Date.now();
+
+    this.state = {
+      ...this.state,
+      checkCount: this.state.checkCount + 1,
+      lastCheck: now,
+      responded: false,
+      escalationLevel: 1,
+      status: "checking",
+      nextCheckAt: null,
+    };
+
+    this.speak("Are you okay?");
+    this.playWarningSound();
+    this.callbacks?.onCheck(1);
     this.scheduleEscalation(2, this.ESCALATION_STEP_1);
   }
 
-  // Schedule next escalation level
-  private scheduleEscalation(level: EscalationLevel, delay: number) {
-    if (this.escalationTimeout) {
-      clearTimeout(this.escalationTimeout);
+  private scheduleNextCheck(delay: number) {
+    if (!this.state.isActive || this.state.isPaused) {
+      return;
     }
 
+    this.clearNextCheckTimer();
+
+    this.state = {
+      ...this.state,
+      nextCheckAt: Date.now() + delay,
+    };
+
+    this.nextCheckTimeout = window.setTimeout(() => {
+      this.triggerSafetyCheck();
+    }, delay);
+  }
+
+  private scheduleEscalation(level: EscalationLevel, delay: number) {
+    this.clearEscalationTimer();
+
     this.escalationTimeout = window.setTimeout(() => {
-      if (!this.state.responded && this.state.isActive) {
+      if (!this.state.responded && this.state.isActive && !this.state.isPaused) {
         this.escalate(level);
       }
     }, delay);
   }
 
-  // Escalate to next level
   private escalate(level: EscalationLevel) {
-    this.state.escalationLevel = level;
+    this.state = {
+      ...this.state,
+      escalationLevel: level,
+    };
 
     switch (level) {
       case 2:
-        // Level 2: Warning - "We didn't hear from you"
-        this.state.status = 'warning';
-        console.log('⚠️ Escalation Level 2 - Warning');
+        this.state = {
+          ...this.state,
+          status: "warning",
+        };
+        this.speak("We did not hear from you. Are you okay?");
         this.playWarningSound();
-        if (this.callbacks?.onEscalate) {
-          this.callbacks.onEscalate(2);
-        }
-        // Schedule next escalation
+        this.callbacks?.onEscalate(2);
         this.scheduleEscalation(3, this.ESCALATION_STEP_2);
         break;
-
       case 3:
-        // Level 3: Critical - Loud alarm + vibration
-        this.state.status = 'critical';
-        console.log('🚨 Escalation Level 3 - Critical Alert');
+        this.state = {
+          ...this.state,
+          status: "critical",
+        };
+        this.speak("Please respond. Emergency will be triggered.");
         this.startAlarm();
         this.vibrate([200, 100, 200, 100, 200]);
-        if (this.callbacks?.onEscalate) {
-          this.callbacks.onEscalate(3);
-        }
-        // Schedule final escalation (auto SOS)
+        this.callbacks?.onEscalate(3);
         this.scheduleEscalation(4, this.ESCALATION_STEP_3);
         break;
-
       case 4:
-        // Level 4: Emergency - Auto activate SOS
-        this.state.status = 'emergency';
-        console.log('🆘 Escalation Level 4 - AUTO SOS ACTIVATED');
+        this.state = {
+          ...this.state,
+          status: "emergency",
+        };
         this.activateAutoSOS();
         break;
     }
   }
 
-  // User responded positively
-  userResponded(response: 'ok' | 'help' | 'sos') {
-    this.state.responded = true;
-    this.state.lastResponse = Date.now();
-    this.stopAlarm();
+  private async activateAutoSOS() {
+    this.clearTimers();
 
-    if (this.escalationTimeout) {
-      clearTimeout(this.escalationTimeout);
-      this.escalationTimeout = null;
-    }
+    this.state = {
+      ...this.state,
+      status: "emergency",
+      escalationLevel: 4,
+      nextCheckAt: null,
+    };
 
-    switch (response) {
-      case 'ok':
-        // Reset to safe state
-        this.state.status = 'safe';
-        this.state.escalationLevel = 0;
-        console.log('✅ User responded: I\'m OK');
-        if (this.callbacks?.onReset) {
-          this.callbacks.onReset();
-        }
-        break;
-
-      case 'help':
-        // User needs help but not emergency
-        this.state.status = 'warning';
-        console.log('⚠️ User needs help');
-        break;
-
-      case 'sos':
-        // Manual SOS activation
-        this.activateAutoSOS();
-        break;
-    }
-  }
-
-  // Activate SOS automatically
-  private activateAutoSOS() {
-    this.state.status = 'emergency';
-    this.state.escalationLevel = 4;
     this.startAlarm();
     this.vibrate([500, 200, 500, 200, 500]);
+    this.speak("Emergency activated. Sending your location now.");
 
-    if (this.callbacks?.onSOSActivated) {
-      this.callbacks.onSOSActivated();
+    try {
+      await sosService.activateSOS("auto");
+    } catch (error) {
+      console.error("Failed to activate SOS automatically:", error);
     }
 
-    // Stop monitoring after SOS
-    setTimeout(() => {
-      this.stopMonitoring();
-    }, 5000);
+    this.callbacks?.onSOSActivated();
   }
 
-  // Audio alert methods
   private playWarningSound() {
-    if (!this.audioContext) return;
+    if (!this.audioContext) {
+      return;
+    }
 
     try {
       const oscillator = this.audioContext.createOscillator();
@@ -239,18 +396,20 @@ class SafetyMonitorService {
       gainNode.connect(this.audioContext.destination);
 
       oscillator.frequency.value = 800;
-      oscillator.type = 'sine';
-      gainNode.gain.value = 0.3;
+      oscillator.type = "sine";
+      gainNode.gain.value = 0.25;
 
       oscillator.start(this.audioContext.currentTime);
       oscillator.stop(this.audioContext.currentTime + 0.2);
-    } catch (e) {
-      console.warn('Could not play warning sound:', e);
+    } catch (error) {
+      console.warn("Could not play warning sound:", error);
     }
   }
 
   private startAlarm() {
-    if (!this.audioContext || this.alarmSound) return;
+    if (!this.audioContext || this.alarmSound) {
+      return;
+    }
 
     try {
       this.alarmSound = this.audioContext.createOscillator();
@@ -260,74 +419,93 @@ class SafetyMonitorService {
       gainNode.connect(this.audioContext.destination);
 
       this.alarmSound.frequency.value = 1000;
-      this.alarmSound.type = 'square';
-      gainNode.gain.value = 0.5;
+      this.alarmSound.type = "square";
+      gainNode.gain.value = 0.45;
 
-      // Create pulsing effect
       const now = this.audioContext.currentTime;
-      for (let i = 0; i < 10; i++) {
-        gainNode.gain.setValueAtTime(0.5, now + i * 0.5);
-        gainNode.gain.setValueAtTime(0, now + i * 0.5 + 0.25);
+      for (let index = 0; index < 10; index++) {
+        gainNode.gain.setValueAtTime(0.45, now + index * 0.5);
+        gainNode.gain.setValueAtTime(0, now + index * 0.5 + 0.25);
       }
 
-      this.alarmSound.start(this.audioContext.currentTime);
-      this.alarmSound.stop(this.audioContext.currentTime + 5);
+      this.alarmSound.start(now);
+      this.alarmSound.stop(now + 5);
 
-      // Restart alarm after it stops
-      setTimeout(() => {
-        if (this.state.status === 'critical' || this.state.status === 'emergency') {
+      window.setTimeout(() => {
+        if (
+          this.state.status === "critical" ||
+          this.state.status === "emergency"
+        ) {
           this.alarmSound = null;
           this.startAlarm();
         }
       }, 5000);
-    } catch (e) {
-      console.warn('Could not play alarm:', e);
-    }
-  }
-
-  private stopAlarm() {
-    if (this.alarmSound) {
-      try {
-        this.alarmSound.stop();
-      } catch (e) {
-        // Already stopped
-      }
+    } catch (error) {
+      console.warn("Could not play alarm:", error);
       this.alarmSound = null;
     }
   }
 
-  private vibrate(pattern: number[]) {
-    if ('vibrate' in navigator) {
-      try {
-        navigator.vibrate(pattern);
-      } catch (e) {
-        console.warn('Vibration not supported:', e);
-      }
+  private stopAlarm() {
+    if (!this.alarmSound) {
+      return;
+    }
+
+    try {
+      this.alarmSound.stop();
+    } catch (error) {
+      // Already stopped
+    }
+
+    this.alarmSound = null;
+  }
+
+  private speak(message: string) {
+    if (!("speechSynthesis" in window)) {
+      return;
+    }
+
+    try {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(message);
+      utterance.rate = 1;
+      utterance.pitch = 1;
+      utterance.volume = 1;
+      window.speechSynthesis.speak(utterance);
+    } catch (error) {
+      console.warn("Voice prompt not available:", error);
     }
   }
 
-  // Get current state
-  getState(): SafetyMonitorState {
-    return { ...this.state };
+  private vibrate(pattern: number[]) {
+    if (!("vibrate" in navigator)) {
+      return;
+    }
+
+    try {
+      navigator.vibrate(pattern);
+    } catch (error) {
+      console.warn("Vibration not supported:", error);
+    }
   }
 
-  // Check if monitoring is active
-  isMonitoring(): boolean {
-    return this.state.isActive;
+  private clearTimers() {
+    this.clearNextCheckTimer();
+    this.clearEscalationTimer();
   }
 
-  // Get time until next check (in seconds)
-  getTimeUntilNextCheck(): number {
-    if (!this.state.isActive) return 0;
-    const elapsed = Date.now() - this.state.lastCheck;
-    const remaining = Math.max(0, this.CHECK_INTERVAL - elapsed);
-    return Math.floor(remaining / 1000);
+  private clearNextCheckTimer() {
+    if (this.nextCheckTimeout) {
+      clearTimeout(this.nextCheckTimeout);
+      this.nextCheckTimeout = null;
+    }
   }
 
-  // Get journey duration (in seconds)
-  getJourneyDuration(): number {
-    if (!this.state.journeyStartTime) return 0;
-    return Math.floor((Date.now() - this.state.journeyStartTime) / 1000);
+  private clearEscalationTimer() {
+    if (this.escalationTimeout) {
+      clearTimeout(this.escalationTimeout);
+      this.escalationTimeout = null;
+    }
   }
 }
 

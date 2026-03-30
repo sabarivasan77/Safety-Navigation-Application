@@ -26,6 +26,7 @@ import {
 import {
   safetyMonitorService,
   EscalationLevel,
+  SafetyMonitorState,
 } from "./services/safetyMonitorService";
 import { sosService } from "./services/sosService";
 import { MapView, MapViewRef } from "./components/MapView";
@@ -35,7 +36,6 @@ import { RoutePanel } from "./components/RoutePanel";
 import { SOSButton } from "./components/SOSButton";
 import { AudioSafety } from "./components/AudioSafety";
 import { SafetyCheckDialog } from "./components/SafetyCheckDialog";
-import { SafetyMonitorPanel } from "./components/SafetyMonitorPanel";
 import { SafetyMonitorControl } from "./components/SafetyMonitorControl";
 import { EmergencyActiveScreen } from "./components/EmergencyActiveScreen";
 import { EmergencyContactsManager } from "./components/EmergencyContactsManager";
@@ -131,7 +131,6 @@ export default function App() {
   const [showSafetyCheck, setShowSafetyCheck] = useState(false);
   const [checkEscalationLevel, setCheckEscalationLevel] =
     useState<EscalationLevel>(0);
-  const [isMonitoring, setIsMonitoring] = useState(false);
   const [sosActivated, setSOSActivated] = useState(false);
   const [escalationLevel, setEscalationLevel] =
     useState<EscalationLevel>("normal");
@@ -157,11 +156,14 @@ export default function App() {
   const [showManageContacts, setShowManageContacts] =
     useState(false);
 
-  // Manual safety check states
-  const [manualFlowActive, setManualFlowActive] =
-    useState(false);
-  const [manualFlowPaused, setManualFlowPaused] =
-    useState(false);
+  const [monitorState, setMonitorState] =
+    useState<SafetyMonitorState>(
+      safetyMonitorService.getState(),
+    );
+
+  const refreshMonitorState = () => {
+    setMonitorState(safetyMonitorService.getState());
+  };
 
   // Load map data only once on mount to avoid rate limiting
   useEffect(() => {
@@ -169,6 +171,14 @@ export default function App() {
       loadMapData();
       setDataLoaded(true);
     }
+  }, []);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      refreshMonitorState();
+    }, 1000);
+
+    return () => window.clearInterval(interval);
   }, []);
 
   const loadMapData = async () => {
@@ -314,14 +324,47 @@ export default function App() {
         setCheckEscalationLevel(0);
       },
     });
-    setIsMonitoring(true);
+    refreshMonitorState();
   };
 
   const handleStopMonitoring = () => {
     safetyMonitorService.stopMonitoring();
-    setIsMonitoring(false);
     setShowSafetyCheck(false);
     setCheckEscalationLevel(0);
+    refreshMonitorState();
+  };
+
+  const handlePauseMonitoring = () => {
+    if (!monitorState.isActive) {
+      return;
+    }
+
+    if (monitorState.isPaused) {
+      safetyMonitorService.resumeMonitoring();
+    } else {
+      safetyMonitorService.pauseMonitoring();
+      setShowSafetyCheck(false);
+      setCheckEscalationLevel(0);
+    }
+
+    refreshMonitorState();
+  };
+
+  const handleResetMonitoring = () => {
+    safetyMonitorService.resetMonitoring();
+    setShowSafetyCheck(false);
+    setCheckEscalationLevel(0);
+    refreshMonitorState();
+  };
+
+  const handleToggleDemoMode = () => {
+    safetyMonitorService.setDemoMode(!monitorState.demoMode);
+    refreshMonitorState();
+  };
+
+  const handleSkipLevel = () => {
+    safetyMonitorService.skipToNextLevel();
+    refreshMonitorState();
   };
 
   const handleSafetyResponse = (
@@ -334,9 +377,39 @@ export default function App() {
       setCheckEscalationLevel(0);
     } else if (response === "sos") {
       setSOSActivated(true);
+    } else if (response === "help") {
+      setShowSafetyCheck(false);
+      setCheckEscalationLevel(0);
+      setShowManageContacts(true);
+
+      const alertId = `help-request-${Date.now()}`;
+      setSafetyAlerts((prev) => [
+        ...prev,
+        {
+          id: alertId,
+          type: "warning",
+          title: "Support Opened",
+          message:
+            "Safety monitoring has been reset and your support options are ready.",
+          suggestedAction:
+            "Use SOS for emergencies or manage contacts for a quick outreach.",
+          onReroute: () => {
+            setSafetyAlerts((current) =>
+              current.filter((alert) => alert.id !== alertId),
+            );
+          },
+        },
+      ]);
     }
-    // 'help' keeps dialog open with emergency panel info
+
+    refreshMonitorState();
   };
+
+  useEffect(() => {
+    if (journeyStarted && !safetyMonitorService.isMonitoring()) {
+      handleStartMonitoring();
+    }
+  }, [journeyStarted]);
 
   return (
     <div className="h-screen w-screen bg-[#F8FAFC] overflow-hidden flex flex-col">
@@ -420,6 +493,21 @@ export default function App() {
             </div>
           </div>
 
+          <div className="absolute right-4 top-4 z-[1000]">
+            <SafetyMonitorControl
+              isActive={monitorState.isActive}
+              isPaused={monitorState.isPaused}
+              demoMode={monitorState.demoMode}
+              escalationLevel={monitorState.escalationLevel}
+              nextCheckInSeconds={safetyMonitorService.getTimeUntilNextCheck()}
+              onStart={handleStartMonitoring}
+              onPause={handlePauseMonitoring}
+              onReset={handleResetMonitoring}
+              onToggleDemoMode={handleToggleDemoMode}
+              onSkipLevel={handleSkipLevel}
+            />
+          </div>
+
           {/* Map View */}
           {activeTab === "map" && (
             <div className="w-full h-full relative">
@@ -497,6 +585,8 @@ export default function App() {
         level={checkEscalationLevel}
         onResponse={handleSafetyResponse}
         isVisible={showSafetyCheck}
+        onNextLevel={handleSkipLevel}
+        showNextLevelButton={monitorState.demoMode}
       />
 
       {/* Emergency Active Screen - Full screen overlay */}

@@ -1,77 +1,159 @@
-import { useState } from 'react';
-import { Button } from './ui/button';
-import { Shield, Play, Square } from 'lucide-react';
-import { safetyMonitorService } from '../services/safetyMonitorService';
+import { Button } from "./ui/button";
+import {
+  Play,
+  Pause,
+  RotateCcw,
+  SkipForward,
+  Shield,
+  ShieldAlert,
+} from "lucide-react";
 
 interface SafetyMonitorControlProps {
-  onStart: () => void;
-  onStop: () => void;
   isActive: boolean;
+  isPaused: boolean;
+  demoMode: boolean;
+  escalationLevel: 0 | 1 | 2 | 3 | 4;
+  nextCheckInSeconds: number;
+  onStart: () => void;
+  onPause: () => void;
+  onReset: () => void;
+  onToggleDemoMode: () => void;
+  onSkipLevel: () => void;
 }
 
-export function SafetyMonitorControl({ onStart, onStop, isActive }: SafetyMonitorControlProps) {
-  const [showConfirm, setShowConfirm] = useState(false);
+const levelStyles = {
+  0: {
+    badge: "Ready",
+    tone: "bg-blue-50 text-blue-700 border-blue-200",
+  },
+  1: {
+    badge: "Level 1",
+    tone: "bg-blue-50 text-blue-700 border-blue-200",
+  },
+  2: {
+    badge: "Level 2",
+    tone: "bg-yellow-50 text-yellow-700 border-yellow-200",
+  },
+  3: {
+    badge: "Level 3",
+    tone: "bg-orange-50 text-orange-700 border-orange-200",
+  },
+  4: {
+    badge: "SOS",
+    tone: "bg-red-50 text-red-700 border-red-200",
+  },
+} as const;
 
-  const handleStart = () => {
-    onStart();
-  };
+function formatTime(seconds: number) {
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins}:${secs.toString().padStart(2, "0")}`;
+}
 
-  const handleStop = () => {
-    setShowConfirm(true);
-  };
-
-  const confirmStop = () => {
-    onStop();
-    setShowConfirm(false);
-  };
-
-  if (showConfirm) {
-    return (
-      <div className="bg-yellow-50 border-2 border-yellow-500 rounded-xl p-4">
-        <h3 className="font-semibold text-yellow-900 mb-2">Stop Safety Monitoring?</h3>
-        <p className="text-sm text-yellow-800 mb-4">
-          You won't receive safety checks anymore. Only stop if your journey is complete.
-        </p>
-        <div className="flex gap-2">
-          <Button
-            onClick={confirmStop}
-            variant="destructive"
-            className="flex-1"
-          >
-            Yes, Stop
-          </Button>
-          <Button
-            onClick={() => setShowConfirm(false)}
-            variant="outline"
-            className="flex-1"
-          >
-            Cancel
-          </Button>
-        </div>
-      </div>
-    );
-  }
+export function SafetyMonitorControl({
+  isActive,
+  isPaused,
+  demoMode,
+  escalationLevel,
+  nextCheckInSeconds,
+  onStart,
+  onPause,
+  onReset,
+  onToggleDemoMode,
+  onSkipLevel,
+}: SafetyMonitorControlProps) {
+  const statusStyle = levelStyles[escalationLevel];
+  const isRunning = isActive && !isPaused;
 
   return (
-    <Button
-      onClick={isActive ? handleStop : handleStart}
-      className={`w-full font-semibold py-6 text-lg rounded-xl shadow-lg transform hover:scale-105 transition-all ${
-        isActive
-          ? 'bg-red-500 hover:bg-red-600'
-          : 'bg-blue-500 hover:bg-blue-600'
-      }`}
-    >
-      {isActive ? (
-        <>
-          <Square className="w-5 h-5 mr-2" />
-          Stop Safety Monitor
-        </>
-      ) : (
-        <>
-          <Play className="w-5 h-5 mr-2" />
-          Start Safety Monitor
-        </>
-      )}
-    </Button>
+    <div className="w-[320px] max-w-[calc(100vw-2rem)] rounded-2xl border border-gray-200 bg-white/95 p-4 shadow-2xl backdrop-blur-sm">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <Shield className="h-5 w-5 text-blue-600" />
+            <h3 className="text-sm font-bold text-gray-900">
+              Safety Monitor
+            </h3>
+          </div>
+          <p className="mt-1 text-xs text-gray-600">
+            5-minute check-ins with automatic escalation.
+          </p>
+        </div>
+        <span
+          className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${statusStyle.tone}`}
+        >
+          {statusStyle.badge}
+        </span>
+      </div>
+
+      <div className="mb-3 grid grid-cols-2 gap-2 text-xs">
+        <div className="rounded-xl bg-slate-50 p-3">
+          <p className="text-slate-500">State</p>
+          <p className="mt-1 font-semibold text-slate-800">
+            {!isActive ? "Stopped" : isPaused ? "Paused" : "Active"}
+          </p>
+        </div>
+        <div className="rounded-xl bg-slate-50 p-3">
+          <p className="text-slate-500">Next Check</p>
+          <p className="mt-1 font-semibold text-slate-800">
+            {isRunning ? formatTime(nextCheckInSeconds) : "--:--"}
+          </p>
+        </div>
+      </div>
+
+      <div className="mb-3 grid grid-cols-2 gap-2">
+        <Button
+          onClick={onStart}
+          className="bg-blue-600 text-white hover:bg-blue-700"
+        >
+          <Play className="mr-2 h-4 w-4" />
+          {isActive ? "Restart" : "Start"}
+        </Button>
+        <Button
+          onClick={onPause}
+          variant="outline"
+          disabled={!isActive}
+          className="border-yellow-300 text-yellow-800 hover:bg-yellow-50"
+        >
+          <Pause className="mr-2 h-4 w-4" />
+          {isPaused ? "Resume" : "Pause"}
+        </Button>
+        <Button
+          onClick={onReset}
+          variant="outline"
+          disabled={!isActive}
+          className="border-slate-300 hover:bg-slate-50"
+        >
+          <RotateCcw className="mr-2 h-4 w-4" />
+          Reset
+        </Button>
+        <Button
+          onClick={onToggleDemoMode}
+          variant={demoMode ? "default" : "outline"}
+          className={
+            demoMode
+              ? "bg-violet-600 text-white hover:bg-violet-700"
+              : "border-violet-300 text-violet-800 hover:bg-violet-50"
+          }
+        >
+          <ShieldAlert className="mr-2 h-4 w-4" />
+          Demo {demoMode ? "On" : "Off"}
+        </Button>
+      </div>
+
+      <Button
+        onClick={onSkipLevel}
+        disabled={!demoMode || !isActive || escalationLevel === 4}
+        className="w-full bg-red-600 text-white hover:bg-red-700 disabled:bg-gray-200 disabled:text-gray-500"
+      >
+        <SkipForward className="mr-2 h-4 w-4" />
+        Demo / Skip To Next Level
+      </Button>
+
+      <p className="mt-3 text-[11px] leading-5 text-gray-500">
+        Demo skip only works when demo mode is on and does not change the real
+        timing configuration.
+      </p>
+    </div>
   );
 }

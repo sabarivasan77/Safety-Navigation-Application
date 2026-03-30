@@ -535,6 +535,10 @@ export default function App() {
                 <Scene3DFallback
                   buildings={buildings}
                   roads={roads}
+                  pois={pois}
+                  routes={routes.map((item) => item.route)}
+                  selectedRoute={selectedRoute}
+                  routeSegments={routeSegments}
                   centerLat={center[0]}
                   centerLon={center[1]}
                   isNightMode={
@@ -546,10 +550,9 @@ export default function App() {
               <Scene3DOverlay
                 buildingCount={buildings.length}
                 roadCount={roads.length}
-                isNightMode={
-                  new Date().getHours() >= 18 ||
-                  new Date().getHours() <= 6
-                }
+                poiCount={pois.filter((poi) =>
+                  ["police", "hospital", "petrol"].includes(poi.type),
+                ).length}
               />
             </div>
           )}

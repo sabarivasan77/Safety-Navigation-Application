@@ -1,44 +1,87 @@
-import { useState, useEffect } from 'react';
-import { SafetyLegend } from './components/SafetyLegend';
-import { Controls3DInfo } from './components/Controls3DInfo';
-import { WelcomeOverlay } from './components/WelcomeOverlay';
-import { QuickStats } from './components/QuickStats';
-import { Scene3DOverlay } from './components/Scene3DOverlay';
-import { Scene3DFallback } from './3d/Scene3DFallback';
-import { ErrorBoundary } from './components/ErrorBoundary';
-import { Button } from './components/ui/button';
-import { mapService, SearchResult, Building, Road, POI } from './services/mapService';
-import { routeService, Route } from './services/routeService';
-import { safetyService, SafetyScore } from './services/safetyService';
-import { routeSegmentService, RouteSegment } from './services/routeSegmentService';
-import { safetyMonitorService, EscalationLevel } from './services/safetyMonitorService';
-import { sosService } from './services/sosService';
-import { MapView } from './components/MapView';
-import { SimplifiedSidebar } from './components/SimplifiedSidebar';
-import { SearchBar } from './components/SearchBar';
-import { RoutePanel } from './components/RoutePanel';
-import { SOSButton } from './components/SOSButton';
-import { AudioSafety } from './components/AudioSafety';
-import { SafetyCheckDialog } from './components/SafetyCheckDialog';
-import { SafetyMonitorPanel } from './components/SafetyMonitorPanel';
-import { SafetyMonitorControl } from './components/SafetyMonitorControl';
-import { EmergencyActiveScreen } from './components/EmergencyActiveScreen';
-import { EmergencyContactsManager } from './components/EmergencyContactsManager';
-import { PreTripInfo, TripInfo } from './components/PreTripInfo';
-import { TravelSummary } from './components/TravelSummary';
-import { SafetyAlertManager, SafetyAlertData } from './components/SafetyAlert';
-import { RealTimeMonitor } from './components/RealTimeMonitor';
-import { UnifiedChat } from './components/UnifiedChat';
-import { ContactNotificationSystem, ContactNotificationStatus } from './components/ContactNotificationSystem';
-import { ManualSafetyCheck } from './components/ManualSafetyCheck';
-import { LiveCrowdMonitor } from './components/LiveCrowdMonitor';
-import { NearbyServices } from './components/NearbyServices';
-import { LocationPermissionPrompt } from './components/LocationPermissionPrompt';
-import { realtimeService, RealTimeData } from './services/realtimeService';
-import { Shield as ShieldIcon, MapPin, Box, Hospital, Loader2, Users, ChevronDown, ChevronUp, Navigation, Play, CheckCircle, Shield } from 'lucide-react';
+import { useState, useEffect, useRef } from "react";
+import { SafetyLegend } from "./components/SafetyLegend";
+import { Controls3DInfo } from "./components/Controls3DInfo";
+import { WelcomeOverlay } from "./components/WelcomeOverlay";
+import { QuickStats } from "./components/QuickStats";
+import { Scene3DOverlay } from "./components/Scene3DOverlay";
+import { Scene3DFallback } from "./3d/Scene3DFallback";
+import { ErrorBoundary } from "./components/ErrorBoundary";
+import { Button } from "./components/ui/button";
+import {
+  mapService,
+  SearchResult,
+  Building,
+  Road,
+  POI,
+} from "./services/mapService";
+import { routeService, Route } from "./services/routeService";
+import {
+  safetyService,
+  SafetyScore,
+} from "./services/safetyService";
+import {
+  routeSegmentService,
+  RouteSegment,
+} from "./services/routeSegmentService";
+import {
+  safetyMonitorService,
+  EscalationLevel,
+} from "./services/safetyMonitorService";
+import { sosService } from "./services/sosService";
+import { MapView, MapViewRef } from "./components/MapView";
+import { SimplifiedSidebar } from "./components/SimplifiedSidebar";
+import { SearchBar } from "./components/SearchBar";
+import { RoutePanel } from "./components/RoutePanel";
+import { SOSButton } from "./components/SOSButton";
+import { AudioSafety } from "./components/AudioSafety";
+import { SafetyCheckDialog } from "./components/SafetyCheckDialog";
+import { SafetyMonitorPanel } from "./components/SafetyMonitorPanel";
+import { SafetyMonitorControl } from "./components/SafetyMonitorControl";
+import { EmergencyActiveScreen } from "./components/EmergencyActiveScreen";
+import { EmergencyContactsManager } from "./components/EmergencyContactsManager";
+import {
+  PreTripInfo,
+  TripInfo,
+} from "./components/PreTripInfo";
+import { TravelSummary } from "./components/TravelSummary";
+import {
+  SafetyAlertManager,
+  SafetyAlertData,
+} from "./components/SafetyAlert";
+import { RealTimeMonitor } from "./components/RealTimeMonitor";
+import { UnifiedChat } from "./components/UnifiedChat";
+import {
+  ContactNotificationSystem,
+  ContactNotificationStatus,
+} from "./components/ContactNotificationSystem";
+import { ManualSafetyCheck } from "./components/ManualSafetyCheck";
+import { LiveCrowdMonitor } from "./components/LiveCrowdMonitor";
+import { NearbyServices } from "./components/NearbyServices";
+import {
+  realtimeService,
+  RealTimeData,
+} from "./services/realtimeService";
+import {
+  Shield as ShieldIcon,
+  MapPin,
+  Box,
+  Hospital,
+  Loader2,
+  Users,
+  ChevronDown,
+  ChevronUp,
+  Navigation,
+  Play,
+  CheckCircle,
+} from "lucide-react";
 
 // Journey Step System for Progressive UI
-type JourneyStep = 'idle' | 'planning' | 'preparing' | 'traveling' | 'complete';
+type JourneyStep =
+  | "idle"
+  | "planning"
+  | "preparing"
+  | "traveling"
+  | "complete";
 
 interface Contact {
   id: string;
@@ -51,13 +94,28 @@ interface Contact {
 const DEFAULT_CENTER: [number, number] = [11.0168, 76.9558];
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'map' | '3d'>('map');
-  const [center, setCenter] = useState<[number, number]>(DEFAULT_CENTER);
-  const [startLocation, setStartLocation] = useState<{ lat: number; lon: number } | null>(null);
-  const [endLocation, setEndLocation] = useState<{ lat: number; lon: number } | null>(null);
-  const [routes, setRoutes] = useState<Array<{ route: Route; safety: SafetyScore }>>([]);
-  const [selectedRoute, setSelectedRoute] = useState<number | null>(null);
-  const [routeSegments, setRouteSegments] = useState<RouteSegment[][]>([]); // NEW: Smart route segments
+  const [activeTab, setActiveTab] = useState<"map" | "3d">(
+    "map",
+  );
+  const [center, setCenter] =
+    useState<[number, number]>(DEFAULT_CENTER);
+  const [startLocation, setStartLocation] = useState<{
+    lat: number;
+    lon: number;
+  } | null>(null);
+  const [endLocation, setEndLocation] = useState<{
+    lat: number;
+    lon: number;
+  } | null>(null);
+  const [routes, setRoutes] = useState<
+    Array<{ route: Route; safety: SafetyScore }>
+  >([]);
+  const [selectedRoute, setSelectedRoute] = useState<
+    number | null
+  >(null);
+  const [routeSegments, setRouteSegments] = useState<
+    RouteSegment[][]
+  >([]); // NEW: Smart route segments
   const [buildings, setBuildings] = useState<Building[]>([]);
   const [roads, setRoads] = useState<Road[]>([]);
   const [pois, setPois] = useState<POI[]>([]);
@@ -65,97 +123,45 @@ export default function App() {
   const [selectingStart, setSelectingStart] = useState(false);
   const [selectingEnd, setSelectingEnd] = useState(false);
   const [dataLoaded, setDataLoaded] = useState(false);
-  
+
+  // Map reference for animations
+  const mapViewRef = useRef<MapViewRef>(null);
+
   // Safety Monitor states
   const [showSafetyCheck, setShowSafetyCheck] = useState(false);
-  const [checkEscalationLevel, setCheckEscalationLevel] = useState<EscalationLevel>(0);
+  const [checkEscalationLevel, setCheckEscalationLevel] =
+    useState<EscalationLevel>(0);
   const [isMonitoring, setIsMonitoring] = useState(false);
   const [sosActivated, setSOSActivated] = useState(false);
-  const [escalationLevel, setEscalationLevel] = useState<EscalationLevel>('normal');
-  const [showContactsManager, setShowContactsManager] = useState(false);
-  
+  const [escalationLevel, setEscalationLevel] =
+    useState<EscalationLevel>("normal");
+  const [showContactsManager, setShowContactsManager] =
+    useState(false);
+
   // New feature states
   const [showPreTripInfo, setShowPreTripInfo] = useState(false);
-  const [tripInfo, setTripInfo] = useState<TripInfo | null>(null);
+  const [tripInfo, setTripInfo] = useState<TripInfo | null>(
+    null,
+  );
   const [journeyStarted, setJourneyStarted] = useState(false);
-  const [safetyAlerts, setSafetyAlerts] = useState<SafetyAlertData[]>([]);
-  
+  const [safetyAlerts, setSafetyAlerts] = useState<
+    SafetyAlertData[]
+  >([]);
+
   // Contact notification states
-  const [showContactNotification, setShowContactNotification] = useState(false);
-  const [notifiedContacts, setNotifiedContacts] = useState<Contact[]>([]);
-  const [showManageContacts, setShowManageContacts] = useState(false);
-  
+  const [showContactNotification, setShowContactNotification] =
+    useState(false);
+  const [notifiedContacts, setNotifiedContacts] = useState<
+    Contact[]
+  >([]);
+  const [showManageContacts, setShowManageContacts] =
+    useState(false);
+
   // Manual safety check states
-  const [manualFlowActive, setManualFlowActive] = useState(false);
-  const [manualFlowPaused, setManualFlowPaused] = useState(false);
-
-  // Location permission states
-  const [showLocationPrompt, setShowLocationPrompt] = useState(false);
-  const [locationError, setLocationError] = useState<string | null>(null);
-  const [locationPermissionGranted, setLocationPermissionGranted] = useState(false);
-
-  // Request location permission
-  const requestLocationPermission = () => {
-    if ('geolocation' in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          console.log('✅ Location permission granted');
-          setLocationPermissionGranted(true);
-          setShowLocationPrompt(false);
-          setLocationError(null);
-          
-          // Set user's current location as start point
-          setStartLocation({
-            lat: position.coords.latitude,
-            lon: position.coords.longitude
-          });
-          setCenter([position.coords.latitude, position.coords.longitude]);
-        },
-        (error) => {
-          let errorMessage = 'Unable to get your location';
-          
-          switch (error.code) {
-            case error.PERMISSION_DENIED:
-              errorMessage = 'Location access was blocked. Please enable it in your browser settings to use real-time safety features.';
-              break;
-            case error.POSITION_UNAVAILABLE:
-              errorMessage = 'Location information is unavailable. Please check your device settings.';
-              break;
-            case error.TIMEOUT:
-              errorMessage = 'Location request timed out. Please try again.';
-              break;
-          }
-          
-          // Only log as info, not error, since we handle it with UI
-          console.info('ℹ️ Location access:', errorMessage);
-          setLocationError(errorMessage);
-          setShowLocationPrompt(true); // Keep prompt open to show error
-        },
-        {
-          enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 0,
-        }
-      );
-    } else {
-      const errorMessage = 'Geolocation is not supported by your browser. You can still use SafeRoute by manually selecting locations.';
-      setLocationError(errorMessage);
-      console.info('ℹ️', errorMessage);
-      setShowLocationPrompt(true);
-    }
-  };
-
-  // Check location permission on mount
-  useEffect(() => {
-    // Show location prompt after 2 seconds if not granted yet
-    const timer = setTimeout(() => {
-      if (!locationPermissionGranted && !startLocation) {
-        setShowLocationPrompt(true);
-      }
-    }, 2000);
-
-    return () => clearTimeout(timer);
-  }, []);
+  const [manualFlowActive, setManualFlowActive] =
+    useState(false);
+  const [manualFlowPaused, setManualFlowPaused] =
+    useState(false);
 
   // Load map data only once on mount to avoid rate limiting
   useEffect(() => {
@@ -176,25 +182,30 @@ export default function App() {
 
     try {
       // Load data sequentially to avoid rate limiting
-      const buildingsData = await mapService.getBuildingsInBounds(bounds);
+      const buildingsData =
+        await mapService.getBuildingsInBounds(bounds);
       setBuildings(buildingsData);
-      
-      const roadsData = await mapService.getRoadsInBounds(bounds);
+
+      const roadsData =
+        await mapService.getRoadsInBounds(bounds);
       setRoads(roadsData);
-      
+
       const poisData = await mapService.getPOIsInBounds(bounds);
       setPois(poisData);
     } catch (error) {
-      console.error('Error loading map data:', error);
+      console.error("Error loading map data:", error);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSearchSelect = (result: SearchResult, isStart: boolean) => {
+  const handleSearchSelect = (
+    result: SearchResult,
+    isStart: boolean,
+  ) => {
     const lat = parseFloat(result.lat);
     const lon = parseFloat(result.lon);
-    
+
     if (isStart) {
       setStartLocation({ lat, lon });
       setSelectingStart(false);
@@ -202,7 +213,7 @@ export default function App() {
       setEndLocation({ lat, lon });
       setSelectingEnd(false);
     }
-    
+
     setCenter([lat, lon]);
   };
 
@@ -221,35 +232,45 @@ export default function App() {
 
     setLoading(true);
     try {
-      const alternativeRoutes = await routeService.getAlternativeRoutes(
-        startLocation,
-        endLocation
-      );
+      const alternativeRoutes =
+        await routeService.getAlternativeRoutes(
+          startLocation,
+          endLocation,
+        );
 
-      const routesWithSafety = alternativeRoutes.map((route) => ({
-        route,
-        safety: safetyService.calculateRouteSafety(route, pois),
-      }));
+      const routesWithSafety = alternativeRoutes.map(
+        (route) => ({
+          route,
+          safety: safetyService.calculateRouteSafety(
+            route,
+            pois,
+          ),
+        }),
+      );
 
       setRoutes(routesWithSafety);
-      
+
       // 🎨 ANALYZE ROUTES INTO SEGMENTS - Smart color system
-      const segmentedRoutes = alternativeRoutes.map((route) => 
-        routeSegmentService.analyzeRouteSegments(route, pois)
+      const segmentedRoutes = alternativeRoutes.map((route) =>
+        routeSegmentService.analyzeRouteSegments(route, pois),
       );
       setRouteSegments(segmentedRoutes);
-      
-      console.log(`✅ Analyzed ${segmentedRoutes.length} routes into colored segments`);
-      
+
+      console.log(
+        `✅ Analyzed ${segmentedRoutes.length} routes into colored segments`,
+      );
+
       // Auto-select safest route
       const safestIndex = routesWithSafety.reduce(
         (maxIndex, curr, index, arr) =>
-          curr.safety.overall > arr[maxIndex].safety.overall ? index : maxIndex,
-        0
+          curr.safety.overall > arr[maxIndex].safety.overall
+            ? index
+            : maxIndex,
+        0,
       );
       setSelectedRoute(safestIndex);
     } catch (error) {
-      console.error('Error calculating routes:', error);
+      console.error("Error calculating routes:", error);
     } finally {
       setLoading(false);
     }
@@ -262,14 +283,15 @@ export default function App() {
   }, [startLocation, endLocation]);
 
   const nearbyPolice = pois
-    .filter((poi) => poi.type === 'police')
+    .filter((poi) => poi.type === "police")
     .slice(0, 3)
     .map((poi) => ({
       name: poi.name,
-      distance: '850m', // In real app, calculate actual distance
+      distance: "850m", // In real app, calculate actual distance
     }));
 
-  const currentSafetyScore = routes[selectedRoute ?? 0]?.safety.overall ?? 75;
+  const currentSafetyScore =
+    routes[selectedRoute ?? 0]?.safety.overall ?? 75;
 
   // Safety Monitor Callbacks
   const handleStartMonitoring = () => {
@@ -302,33 +324,18 @@ export default function App() {
     setCheckEscalationLevel(0);
   };
 
-  const handleSafetyResponse = (response: 'ok' | 'help' | 'sos') => {
+  const handleSafetyResponse = (
+    response: "ok" | "help" | "sos",
+  ) => {
     safetyMonitorService.userResponded(response);
-    
-    if (response === 'ok') {
+
+    if (response === "ok") {
       setShowSafetyCheck(false);
       setCheckEscalationLevel(0);
-    } else if (response === 'sos') {
+    } else if (response === "sos") {
       setSOSActivated(true);
     }
     // 'help' keeps dialog open with emergency panel info
-  };
-
-  // Reset journey to start fresh
-  const handleReset = () => {
-    setStartLocation(null);
-    setEndLocation(null);
-    setRoutes([]);
-    setSelectedRoute(null);
-    setRouteSegments([]);
-    setJourneyStarted(false);
-    setNotifiedContacts([]);
-    setTripInfo(null);
-    setShowPreTripInfo(false);
-    setShowContactNotification(false);
-    setSafetyAlerts([]);
-    setSelectingStart(false);
-    setSelectingEnd(false);
   };
 
   return (
@@ -338,18 +345,21 @@ export default function App() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <ShieldIcon className="w-6 h-6 text-blue-600" />
-            <h1 className="text-lg md:text-xl font-bold text-gray-900">SafeRoute</h1>
+            <h1 className="text-lg md:text-xl font-bold text-gray-900">
+              SafeRoute
+            </h1>
           </div>
           <div className="flex items-center gap-2 text-xs text-gray-600">
             <MapPin className="w-4 h-4" />
-            <span className="hidden md:inline">Coimbatore & Tiruppur</span>
+            <span className="hidden md:inline">
+              Coimbatore & Tiruppur
+            </span>
           </div>
         </div>
       </header>
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-        
         {/* Simplified Sidebar - Step-by-Step Guide */}
         <SimplifiedSidebar
           onSearchSelect={handleSearchSelect}
@@ -369,7 +379,6 @@ export default function App() {
           onSelectRoute={setSelectedRoute}
           onStartJourney={() => setShowPreTripInfo(true)}
           journeyStarted={journeyStarted}
-          onReset={handleReset}
           onSOSActivated={() => setSOSActivated(true)}
           nearbyPolice={nearbyPolice}
           notifiedContacts={notifiedContacts}
@@ -379,16 +388,15 @@ export default function App() {
 
         {/* Main View */}
         <main className="flex-1 relative overflow-hidden bg-gray-100 z-10">
-          {/* Top Control Bar - 2D/3D Toggle + Are You Safe Button */}
-          <div className="absolute top-4 left-4 right-4 z-[1000] flex items-start justify-between gap-2">
-            {/* Left: 2D/3D Toggle */}
+          {/* 2D/3D Toggle Buttons - Maximum visibility */}
+          <div className="absolute top-4 left-4 z-[1000]">
             <div className="bg-white rounded-lg shadow-2xl border-2 border-gray-300 p-1 flex gap-1">
               <button
-                onClick={() => setActiveTab('map')}
+                onClick={() => setActiveTab("map")}
                 className={`flex items-center gap-2 px-4 py-2.5 rounded-md font-semibold transition-all ${
-                  activeTab === 'map'
-                    ? 'bg-blue-600 text-white shadow-md'
-                    : 'bg-white text-gray-700 hover:bg-gray-100'
+                  activeTab === "map"
+                    ? "bg-blue-600 text-white shadow-md"
+                    : "bg-white text-gray-700 hover:bg-gray-100"
                 }`}
               >
                 <MapPin className="w-5 h-5" />
@@ -396,47 +404,35 @@ export default function App() {
                 <span className="sm:hidden">2D</span>
               </button>
               <button
-                onClick={() => setActiveTab('3d')}
+                onClick={() => setActiveTab("3d")}
                 className={`flex items-center gap-2 px-4 py-2.5 rounded-md font-semibold transition-all ${
-                  activeTab === '3d'
-                    ? 'bg-blue-600 text-white shadow-md'
-                    : 'bg-white text-gray-700 hover:bg-gray-100'
+                  activeTab === "3d"
+                    ? "bg-blue-600 text-white shadow-md"
+                    : "bg-white text-gray-700 hover:bg-gray-100"
                 }`}
               >
                 <Box className="w-5 h-5" />
-                <span className="hidden sm:inline">3D View</span>
+                <span className="hidden sm:inline">
+                  3D View
+                </span>
                 <span className="sm:hidden">3D</span>
               </button>
             </div>
-
-            {/* Right: Are You Safe? Button - Only show when journey is active */}
-            {journeyStarted && (
-              <button
-                onClick={() => {
-                  setShowSafetyCheck(true);
-                  setCheckEscalationLevel(0);
-                }}
-                className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-bold px-4 py-2.5 rounded-lg shadow-2xl border-2 border-white flex items-center gap-2 transition-all hover:scale-105 active:scale-95"
-              >
-                <Shield className="w-5 h-5" />
-                <span className="hidden sm:inline">Are You Safe?</span>
-                <span className="sm:hidden">Safe?</span>
-              </button>
-            )}
           </div>
 
           {/* Map View */}
-          {activeTab === 'map' && (
+          {activeTab === "map" && (
             <div className="w-full h-full relative">
               <MapView
                 center={center}
-                routes={routes.map(r => r.route)}
+                routes={routes.map((r) => r.route)}
                 pois={pois}
                 risks={safetyService.getAreaRisks()}
                 selectedRoute={selectedRoute}
-                routeSafetyScores={routes.map(r => r.safety)}
+                routeSafetyScores={routes.map((r) => r.safety)}
                 routeSegments={routeSegments}
                 onMapClick={handleMapClick}
+                ref={mapViewRef}
               />
               <div className="absolute bottom-4 left-4 z-[500]">
                 <SafetyLegend />
@@ -445,7 +441,7 @@ export default function App() {
           )}
 
           {/* 3D View */}
-          {activeTab === '3d' && (
+          {activeTab === "3d" && (
             <div className="w-full h-full bg-gradient-to-b from-blue-100 to-blue-50 relative">
               <ErrorBoundary>
                 <Scene3DFallback
@@ -453,13 +449,19 @@ export default function App() {
                   roads={roads}
                   centerLat={center[0]}
                   centerLon={center[1]}
-                  isNightMode={new Date().getHours() >= 18 || new Date().getHours() <= 6}
+                  isNightMode={
+                    new Date().getHours() >= 18 ||
+                    new Date().getHours() <= 6
+                  }
                 />
               </ErrorBoundary>
               <Scene3DOverlay
                 buildingCount={buildings.length}
                 roadCount={roads.length}
-                isNightMode={new Date().getHours() >= 18 || new Date().getHours() <= 6}
+                isNightMode={
+                  new Date().getHours() >= 18 ||
+                  new Date().getHours() <= 6
+                }
               />
             </div>
           )}
@@ -468,7 +470,9 @@ export default function App() {
             <div className="absolute inset-0 bg-black bg-opacity-20 flex items-center justify-center z-[2000]">
               <div className="bg-white rounded-lg p-6 shadow-xl flex items-center gap-3">
                 <Loader2 className="w-6 h-6 text-blue-600 animate-spin" />
-                <span className="text-sm font-medium text-gray-900">Loading...</span>
+                <span className="text-sm font-medium text-gray-900">
+                  Loading...
+                </span>
               </div>
             </div>
           )}
@@ -480,7 +484,9 @@ export default function App() {
         currentLocation={startLocation}
         destination={endLocation}
         currentSafetyScore={currentSafetyScore}
-        nearbyHelp={pois.filter(p => p.type === 'police').length}
+        nearbyHelp={
+          pois.filter((p) => p.type === "police").length
+        }
       />
 
       {/* Welcome Overlay */}
@@ -504,7 +510,9 @@ export default function App() {
       {showContactsManager && (
         <div className="fixed inset-0 z-[9998] bg-black/50 flex items-center justify-center p-4">
           <div className="max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <EmergencyContactsManager onClose={() => setShowContactsManager(false)} />
+            <EmergencyContactsManager
+              onClose={() => setShowContactsManager(false)}
+            />
           </div>
         </div>
       )}
@@ -518,7 +526,10 @@ export default function App() {
             // Show contact notification system after pre-trip info
             setShowContactNotification(true);
             // Store trip info in localStorage for safety tracking
-            localStorage.setItem('safeRouteTripInfo', JSON.stringify(info));
+            localStorage.setItem(
+              "safeRouteTripInfo",
+              JSON.stringify(info),
+            );
           }}
           onSkip={() => {
             setShowPreTripInfo(false);
@@ -529,46 +540,87 @@ export default function App() {
       )}
 
       {/* Contact Notification System - NEW */}
-      {showContactNotification && startLocation && endLocation && routes.length > 0 && selectedRoute !== null && (
-        <ContactNotificationSystem
-          onConfirm={(contacts) => {
-            setNotifiedContacts(contacts);
-            setShowContactNotification(false);
-            setJourneyStarted(true);
-            
-            // Simulate sending notifications (in real app, send SMS/push notifications)
-            console.log('Notifying contacts:', contacts);
-            
-            // Show success message
-            const alertId = `contact-notified-${Date.now()}`;
-            setSafetyAlerts(prev => [...prev, {
-              id: alertId,
-              type: 'info',
-              title: 'Contacts Notified',
-              message: `${contacts.length} contact${contacts.length > 1 ? 's have' : ' has'} been notified of your journey.`,
-              suggestedAction: 'They will receive live location updates.',
-              onReroute: () => {
-                setSafetyAlerts(prev => prev.filter(a => a.id !== alertId));
-              },
-            }]);
-          }}
-          onSkip={() => {
-            setShowContactNotification(false);
-            setJourneyStarted(true);
-          }}
-          currentLocation={startLocation}
-          destination={endLocation}
-          routeInfo={
-            selectedRoute !== null
-              ? {
-                  distance: routes[selectedRoute].route.distance,
-                  duration: routes[selectedRoute].route.duration,
-                  safetyScore: routes[selectedRoute].safety.overall,
-                }
-              : undefined
-          }
-        />
-      )}
+      {showContactNotification &&
+        startLocation &&
+        endLocation &&
+        routes.length > 0 &&
+        selectedRoute !== null && (
+          <ContactNotificationSystem
+            onConfirm={(contacts) => {
+              setNotifiedContacts(contacts);
+              setShowContactNotification(false);
+              setJourneyStarted(true);
+
+              // 🎬 ANIMATE MAP TO STARTING LOCATION - Like Google Maps!
+              if (startLocation && mapViewRef.current) {
+                // Switch to map view if not already
+                setActiveTab("map");
+                // Fly to starting location with smooth animation
+                setTimeout(() => {
+                  mapViewRef.current?.flyTo(
+                    startLocation.lat,
+                    startLocation.lon,
+                    16,
+                  );
+                }, 100);
+              }
+
+              // Simulate sending notifications (in real app, send SMS/push notifications)
+              console.log("Notifying contacts:", contacts);
+
+              // Show success message
+              const alertId = `contact-notified-${Date.now()}`;
+              setSafetyAlerts((prev) => [
+                ...prev,
+                {
+                  id: alertId,
+                  type: "info",
+                  title: "Contacts Notified",
+                  message: `${contacts.length} contact${contacts.length > 1 ? "s have" : " has"} been notified of your journey.`,
+                  suggestedAction:
+                    "They will receive live location updates.",
+                  onReroute: () => {
+                    setSafetyAlerts((prev) =>
+                      prev.filter((a) => a.id !== alertId),
+                    );
+                  },
+                },
+              ]);
+            }}
+            onSkip={() => {
+              setShowContactNotification(false);
+              setJourneyStarted(true);
+
+              // 🎬 ANIMATE MAP TO STARTING LOCATION - Like Google Maps!
+              if (startLocation && mapViewRef.current) {
+                // Switch to map view if not already
+                setActiveTab("map");
+                // Fly to starting location with smooth animation
+                setTimeout(() => {
+                  mapViewRef.current?.flyTo(
+                    startLocation.lat,
+                    startLocation.lon,
+                    16,
+                  );
+                }, 100);
+              }
+            }}
+            currentLocation={startLocation}
+            destination={endLocation}
+            routeInfo={
+              selectedRoute !== null
+                ? {
+                    distance:
+                      routes[selectedRoute].route.distance,
+                    duration:
+                      routes[selectedRoute].route.duration,
+                    safetyScore:
+                      routes[selectedRoute].safety.overall,
+                  }
+                : undefined
+            }
+          />
+        )}
 
       {/* Manage Contacts Dialog - NEW */}
       {showManageContacts && (
@@ -587,9 +639,12 @@ export default function App() {
               routeInfo={
                 selectedRoute !== null && routes.length > 0
                   ? {
-                      distance: routes[selectedRoute].route.distance,
-                      duration: routes[selectedRoute].route.duration,
-                      safetyScore: routes[selectedRoute].safety.overall,
+                      distance:
+                        routes[selectedRoute].route.distance,
+                      duration:
+                        routes[selectedRoute].route.duration,
+                      safetyScore:
+                        routes[selectedRoute].safety.overall,
                     }
                   : undefined
               }
@@ -602,18 +657,11 @@ export default function App() {
       <SafetyAlertManager
         alerts={safetyAlerts}
         onDismiss={(id) => {
-          setSafetyAlerts(prev => prev.filter(alert => alert.id !== id));
+          setSafetyAlerts((prev) =>
+            prev.filter((alert) => alert.id !== id),
+          );
         }}
       />
-
-      {/* Location Permission Prompt */}
-      {showLocationPrompt && (
-        <LocationPermissionPrompt
-          onRequestPermission={requestLocationPermission}
-          onDismiss={() => setShowLocationPrompt(false)}
-          error={locationError || undefined}
-        />
-      )}
     </div>
   );
 }

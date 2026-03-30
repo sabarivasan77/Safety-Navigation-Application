@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.vite/
+vite.stdout.log
+vite.stderr.log
+vite-d-drive.err.log
+Safety Navigation/

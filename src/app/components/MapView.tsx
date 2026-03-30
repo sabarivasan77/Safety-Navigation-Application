@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Route } from '../services/routeService';
@@ -17,6 +17,11 @@ interface MapViewProps {
   onMapClick?: (lat: number, lon: number) => void;
 }
 
+export interface MapViewRef {
+  flyTo: (lat: number, lon: number, zoom?: number) => void;
+  fitBounds: (bounds: [[number, number], [number, number]]) => void;
+}
+
 // Fix Leaflet default marker icon
 delete (L.Icon.Default.prototype as any)._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -25,12 +30,33 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
 });
 
-export function MapView({ center, routes, pois, risks, selectedRoute, routeSafetyScores, routeSegments, onMapClick }: MapViewProps) {
+export const MapView = forwardRef<MapViewRef, MapViewProps>(({ center, routes, pois, risks, selectedRoute, routeSafetyScores, routeSegments, onMapClick }, ref) => {
   const mapRef = useRef<L.Map | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const routeLayersRef = useRef<L.Polyline[]>([]);
   const poiLayersRef = useRef<L.Marker[]>([]);
   const riskLayersRef = useRef<L.Circle[]>([]);
+
+  // Expose map control methods to parent
+  useImperativeHandle(ref, () => ({
+    flyTo: (lat: number, lon: number, zoom: number = 15) => {
+      if (mapRef.current) {
+        mapRef.current.flyTo([lat, lon], zoom, {
+          duration: 2, // 2 seconds animation
+          easeLinearity: 0.25
+        });
+      }
+    },
+    fitBounds: (bounds: [[number, number], [number, number]]) => {
+      if (mapRef.current) {
+        mapRef.current.flyToBounds(bounds, {
+          padding: [50, 50],
+          duration: 2,
+          easeLinearity: 0.25
+        });
+      }
+    }
+  }));
 
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
@@ -184,4 +210,4 @@ export function MapView({ center, routes, pois, risks, selectedRoute, routeSafet
   }, [risks]);
 
   return <div ref={mapContainerRef} className="w-full h-full" style={{ position: 'relative', zIndex: 1 }} />;
-}
+});

@@ -1,6 +1,6 @@
 // Simplified Sidebar - Step-by-Step Guided Journey Experience
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Button } from './ui/button';
 import { SearchBar } from './SearchBar';
 import { RoutePanel } from './RoutePanel';
@@ -22,10 +22,8 @@ import {
   ChevronUp, 
   Users,
   AlertCircle,
-  CheckCircle2,
-  ArrowLeft,
-  ArrowRight,
-  Home
+  Volume2,
+  CheckCircle2
 } from 'lucide-react';
 
 type JourneyStep = 'planning' | 'reviewing' | 'preparing' | 'traveling';
@@ -54,7 +52,6 @@ interface SimplifiedSidebarProps {
   // Journey control
   onStartJourney: () => void;
   journeyStarted: boolean;
-  onReset?: () => void;
   
   // Emergency & Safety
   onSOSActivated: () => void;
@@ -78,7 +75,6 @@ export function SimplifiedSidebar({
   onSelectRoute,
   onStartJourney,
   journeyStarted,
-  onReset,
   onSOSActivated,
   nearbyPolice,
   notifiedContacts,
@@ -94,49 +90,10 @@ export function SimplifiedSidebar({
   };
 
   const currentStep = getCurrentStep();
-  
-  // Navigation history
-  const [stepHistory, setStepHistory] = useState<JourneyStep[]>(['planning']);
-  const [currentHistoryIndex, setCurrentHistoryIndex] = useState(0);
 
   // Collapsible sections
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showNearbyServices, setShowNearbyServices] = useState(false);
-
-  // Update history when step changes
-  useEffect(() => {
-    const newStep = getCurrentStep();
-    if (newStep !== stepHistory[currentHistoryIndex]) {
-      const newHistory = [...stepHistory.slice(0, currentHistoryIndex + 1), newStep];
-      setStepHistory(newHistory);
-      setCurrentHistoryIndex(newHistory.length - 1);
-    }
-  }, [currentStep]);
-
-  const canGoBack = currentHistoryIndex > 0;
-  const canGoForward = currentHistoryIndex < stepHistory.length - 1;
-
-  const handleBack = () => {
-    if (canGoBack) {
-      setCurrentHistoryIndex(prev => prev - 1);
-      // Implement state rollback logic here based on previous step
-    }
-  };
-
-  const handleForward = () => {
-    if (canGoForward) {
-      setCurrentHistoryIndex(prev => prev + 1);
-      // Implement state forward logic here
-    }
-  };
-
-  const handleHome = () => {
-    if (onReset) {
-      onReset();
-      setStepHistory(['planning']);
-      setCurrentHistoryIndex(0);
-    }
-  };
 
   // Step indicator
   const steps = [
@@ -154,43 +111,6 @@ export function SimplifiedSidebar({
 
   return (
     <aside className="w-full md:w-96 bg-white border-b md:border-r md:border-b-0 border-gray-200 flex flex-col overflow-hidden z-50 relative shadow-lg md:shadow-none">
-      {/* Navigation Controls - Back/Forward/Home */}
-      <div className="bg-white border-b border-gray-200 px-4 py-2 flex items-center justify-between">
-        <div className="flex items-center gap-1">
-          <button
-            onClick={handleBack}
-            disabled={!canGoBack}
-            className={`p-2 rounded-md transition-colors ${
-              canGoBack
-                ? 'hover:bg-gray-100 text-gray-700'
-                : 'text-gray-300 cursor-not-allowed'
-            }`}
-            title="Go back"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <button
-            onClick={handleForward}
-            disabled={!canGoForward}
-            className={`p-2 rounded-md transition-colors ${
-              canGoForward
-                ? 'hover:bg-gray-100 text-gray-700'
-                : 'text-gray-300 cursor-not-allowed'
-            }`}
-            title="Go forward"
-          >
-            <ArrowRight className="w-5 h-5" />
-          </button>
-        </div>
-        <button
-          onClick={handleHome}
-          className="p-2 rounded-md hover:bg-blue-50 text-blue-600 transition-colors"
-          title="Start new journey"
-        >
-          <Home className="w-5 h-5" />
-        </button>
-      </div>
-      
       {/* Progress Indicator */}
       <div className="bg-gradient-to-r from-blue-50 to-blue-100 px-4 py-3 border-b border-blue-200">
         <div className="flex items-center justify-between mb-2">

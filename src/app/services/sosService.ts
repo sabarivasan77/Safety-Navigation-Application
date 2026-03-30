@@ -222,8 +222,11 @@ class SOSService {
               errorMessage = error.message || 'Unknown location error';
           }
           
-          // Log as info since this is handled gracefully in the UI
-          console.info('ℹ️ Location access:', errorMessage);
+          console.error('❌ Error getting location:', {
+            code: error.code,
+            message: errorMessage,
+            error: error
+          });
           
           if (this.callbacks.onError) {
             this.callbacks.onError(errorMessage);
